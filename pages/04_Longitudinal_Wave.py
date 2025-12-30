@@ -76,41 +76,8 @@ cone_front_x_base = -1.0
 
 if run_animation:
     st.caption("Animation is running...")
-else:
-    st.caption("Animation is paused.")
-
-while run_animation:
-    # 1. Calculate Physics
-    # x(t) = x0 + A * sin(kx) * cos(wt)
-    # We scale amplitude by spacing to avoid particle crossing if possible, though crossing is physically possible for gas, not for spring coils.
-    # Let's limit A to be less than half spacing.
-    spacing = L / (n_particles - 1)
-    max_amp = spacing * 0.9 # Prevent crossing mostly
     
-    A = max_amp * amplitude_factor
-    
-    displacement = A * np.cos(k * x0) * np.cos(omega * t)
-    x_current = x0 + displacement
-    
-    # 2. Calculate Strain/Density for Coloring
-    # Strain = d(displacement)/dx = -A * k * sin(kx) * cos(wt)
-    # Compression: Strain < 0 (Particles get closer) -> Red
-    # Rarefaction: Strain > 0 (Particles move apart) -> Blue
-    
-    strain = -A * k * np.sin(k * x0) * np.cos(omega * t)
-    
-    # Normalize strain for color mapping
-    # We want -Strain to map to Color. 
-    # If Strain is negative (Compression), we want High Value (Red).
-    # If Strain is positive (Rarefaction), we want Low Value (Blue).
-    
-    # Max possible strain is A*k
-    limit = A * k + 1e-9
-    norm_strain = -strain / limit # Now +1 is max compression, -1 is max rarefaction
-    
-    # Map [-1, 1] to [0, 1] for colormap
-    color_values = 0.5 + 0.5 * norm_strain
-    
+    # --- INITIALIZE PLOT ONCE ---
     # 3. Create Figure and Plot
     # Lower DPI to improve FPS for large figure
     fig, ax = plt.subplots(figsize=(12, 4), dpi=80)
@@ -131,48 +98,82 @@ while run_animation:
     ax.spines['bottom'].set_linewidth(2)
 
     # --- Speaker Graphics ---
-    # Housing
+    # Housing (Static)
     housing = patches.Rectangle((-4.8, -0.4), 1.5, 0.8, color='#666666', zorder=5)
     ax.add_patch(housing)
 
-    # Cone (Dynamic)
-    speaker_disp = 0.3 * np.cos(omega * t)
-    current_front_x = cone_front_x_base + speaker_disp
-    
-    # Vertices: [BackTop, BackBottom, FrontBottom, FrontTop]
-    cone_verts = [
+    # Cone (Dynamic - Init)
+    initial_cone_verts = [
         [cone_back_x, 0.2],
         [cone_back_x, -0.2],
-        [current_front_x, -0.6],
-        [current_front_x, 0.6]
+        [cone_front_x_base, -0.6],
+        [cone_front_x_base, 0.6]
     ]
-    speaker_cone = patches.Polygon(cone_verts, closed=True, color='#888888', alpha=0.9, zorder=6)
+    speaker_cone = patches.Polygon(initial_cone_verts, closed=True, color='#888888', alpha=0.9, zorder=6)
     ax.add_patch(speaker_cone)
 
-    # Scatter Plot
-    # Initialize with 0.5 (neutral color) and set fixed vmin/vmax for consistent color mapping
-    scatter = ax.scatter(x_current, np.zeros_like(x_current), s=300, c=color_values, cmap=cmap, vmin=0, vmax=1, edgecolors='white', alpha=0.9, zorder=10)
+    # Scatter Plot (Dynamic - Init)
+    # Initialize with equilibrium positions and neutral color
+    scatter = ax.scatter(x0, np.zeros_like(x0), s=300, c=np.ones_like(x0)*0.5, cmap=cmap, vmin=0, vmax=1, edgecolors='white', alpha=0.9, zorder=10)
 
-    # Draw equilibrium lines (faint)
+    # Draw equilibrium lines (Static)
     ax.vlines(x0, -0.2, 0.2, color='gray', alpha=0.2, linestyle=':', zorder=1)
 
-    # 4. Render Frame
-    try:
-        # Use buffer_rgba for speed
-        fig.canvas.draw()
+    while run_animation:
+        # 1. Calculate Physics
+        # x(t) = x0 + A * sin(kx) * cos(wt)
+        spacing = L / (n_particles - 1)
+        max_amp = spacing * 0.9 # Prevent crossing mostly
         
-        # Get the RGBA buffer from the figure
-        buf = fig.canvas.buffer_rgba()
+        A = max_amp * amplitude_factor
+        
+        displacement = A * np.cos(k * x0) * np.cos(omega * t)
+        x_current = x0 + displacement
+        
+        # 2. Calculate Strain/Density for Coloring
+        strain = -A * k * np.sin(k * x0) * np.cos(omega * t)
+        
+        # Normalize strain for color mapping
+        limit = A * k + 1e-9
+        norm_strain = -strain / limit 
+        color_values = 0.5 + 0.5 * norm_strain
+        
+        # 3. Update Plot Objects
+        # Update Scatter
+        scatter.set_offsets(np.c_[x_current, np.zeros_like(x_current)])
+        scatter.set_array(color_values)
+        
+        # Update Cone
+        speaker_disp = 0.3 * np.cos(omega * t)
+        current_front_x = cone_front_x_base + speaker_disp
+        cone_verts = [
+            [cone_back_x, 0.2],
+            [cone_back_x, -0.2],
+            [current_front_x, -0.6],
+            [current_front_x, 0.6]
+        ]
+        speaker_cone.set_xy(cone_verts)
+
+        # 4. Render Frame
+        try:
+            # Use buffer_rgba for speed
+            fig.canvas.draw()
             
-        # Convert to numpy array
-        X = np.asarray(buf)
+            # Get the RGBA buffer from the figure
+            buf = fig.canvas.buffer_rgba()
+                
+            # Convert to numpy array
+            X = np.asarray(buf)
+            
+            anim_placeholder.image(X, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error rendering animation: {e}")
+            break
         
-        anim_placeholder.image(X, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error rendering animation: {e}")
-        time.sleep(1) # Prevent rapid error looping
-    finally:
-        plt.close(fig)
+        t += dt
+        # time.sleep(0.01) # Removed sleep for max performance
     
-    t += dt
-    time.sleep(0.01)
+    plt.close(fig)
+
+else:
+    st.caption("Animation is paused.")
