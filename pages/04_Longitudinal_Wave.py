@@ -7,12 +7,12 @@ import time
 import sys
 import os
 
+# Page Config
+st.set_page_config(page_title="Longitudinal Standing Wave", layout="wide")
+
 # Add parent directory to path to allow importing utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import utils
-
-# Page Config
-st.set_page_config(page_title="Longitudinal Standing Wave", layout="wide")
 
 utils.add_footer()
 
@@ -58,49 +58,8 @@ omega = 2.0  # Angular frequency
 plt.style.use('dark_background')
 
 # --- Plot Setup ---
-# Lower DPI to improve FPS for large figure
-fig, ax = plt.subplots(figsize=(24, 8), dpi=60)
-fig.patch.set_facecolor('#0E1117')
-ax.set_facecolor('#0E1117')
-fig.subplots_adjust(bottom=0.2)  # Add more space at the bottom for the large label
-ax.set_xlim(-5, L + 1)
-ax.set_ylim(-0.8, 0.8)
-ax.set_yticks([])  # Hide Y axis
-ax.set_xlabel("Position (x)", fontsize=32)
-ax.set_title(f"Longitudinal Standing Wave (Mode n={mode_n})", fontsize=36)
-ax.tick_params(axis='x', labelsize=28, width=2, length=10)
-
-# Remove spines for cleaner look
-ax.spines['left'].set_visible(False)
-ax.spines['right'].set_visible(False)
-ax.spines['top'].set_visible(False)
-ax.spines['bottom'].set_linewidth(3)
-
-# --- Speaker Graphics ---
-# Housing
-housing = patches.Rectangle((-4.8, -0.4), 1.5, 0.8, color='#666666', zorder=5)
-ax.add_patch(housing)
-
-# Cone (Dynamic)
-cone_back_x = -3.3
-cone_front_x_base = -1.0
-# Vertices: [BackTop, BackBottom, FrontBottom, FrontTop]
-cone_verts = [
-    [cone_back_x, 0.2],
-    [cone_back_x, -0.2],
-    [cone_front_x_base, -0.6],
-    [cone_front_x_base, 0.6]
-]
-speaker_cone = patches.Polygon(cone_verts, closed=True, color='#888888', alpha=0.9, zorder=6)
-ax.add_patch(speaker_cone)
-
-# Initial Scatter Plot
 # We use a colormap where Red=Compression, Blue=Rarefaction
 cmap = plt.get_cmap('coolwarm')
-scatter = ax.scatter(x0, np.zeros_like(x0), s=2000, c=x0, cmap=cmap, edgecolors='white', alpha=0.9, zorder=10)
-
-# Draw equilibrium lines (faint)
-ax.vlines(x0, -0.2, 0.2, color='gray', alpha=0.2, linestyle=':', zorder=1)
 
 # Animation Container
 anim_placeholder = st.empty()
@@ -109,8 +68,15 @@ run_animation = st.checkbox("Run Animation", value=True)
 t = 0
 dt = 0.05 * speed_factor
 
+# Cone parameters
+cone_back_x = -3.3
+cone_front_x_base = -1.0
+
 while True:
-    # 1. Calculate Displacement
+    if not run_animation:
+        break
+
+    # 1. Calculate Physics
     # x(t) = x0 + A * sin(kx) * cos(wt)
     # We scale amplitude by spacing to avoid particle crossing if possible, though crossing is physically possible for gas, not for spring coils.
     # Let's limit A to be less than half spacing.
@@ -119,15 +85,15 @@ while True:
     
     A = max_amp * amplitude_factor
     
-    displacement = A * np.sin(k * x0) * np.cos(omega * t)
+    displacement = A * np.cos(k * x0) * np.cos(omega * t)
     x_current = x0 + displacement
     
     # 2. Calculate Strain/Density for Coloring
-    # Strain = d(displacement)/dx = A * k * cos(kx) * cos(wt)
+    # Strain = d(displacement)/dx = -A * k * sin(kx) * cos(wt)
     # Compression: Strain < 0 (Particles get closer) -> Red
     # Rarefaction: Strain > 0 (Particles move apart) -> Blue
     
-    strain = A * k * np.cos(k * x0) * np.cos(omega * t)
+    strain = -A * k * np.sin(k * x0) * np.cos(omega * t)
     
     # Normalize strain for color mapping
     # We want -Strain to map to Color. 
@@ -141,36 +107,68 @@ while True:
     # Map [-1, 1] to [0, 1] for colormap
     color_values = 0.5 + 0.5 * norm_strain
     
-    # 3. Update Plot
-    scatter.set_offsets(np.c_[x_current, np.zeros_like(x_current)])
-    scatter.set_array(color_values)
-    
-    # Update Speaker Animation
+    # 3. Create Figure and Plot
+    # Lower DPI to improve FPS for large figure
+    fig, ax = plt.subplots(figsize=(24, 8), dpi=60)
+    fig.patch.set_facecolor('#0E1117')
+    ax.set_facecolor('#0E1117')
+    fig.subplots_adjust(bottom=0.2)  # Add more space at the bottom for the large label
+    ax.set_xlim(-5, L + 1)
+    ax.set_ylim(-0.8, 0.8)
+    ax.set_yticks([])  # Hide Y axis
+    ax.set_xlabel("Position (x)", fontsize=32)
+    ax.set_title(f"Longitudinal Standing Wave (Mode n={mode_n})", fontsize=36)
+    ax.tick_params(axis='x', labelsize=28, width=2, length=10)
+
+    # Remove spines for cleaner look
+    ax.spines['left'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['bottom'].set_linewidth(3)
+
+    # --- Speaker Graphics ---
+    # Housing
+    housing = patches.Rectangle((-4.8, -0.4), 1.5, 0.8, color='#666666', zorder=5)
+    ax.add_patch(housing)
+
+    # Cone (Dynamic)
     speaker_disp = 0.3 * np.cos(omega * t)
     current_front_x = cone_front_x_base + speaker_disp
     
-    new_cone_verts = [
+    # Vertices: [BackTop, BackBottom, FrontBottom, FrontTop]
+    cone_verts = [
         [cone_back_x, 0.2],
         [cone_back_x, -0.2],
         [current_front_x, -0.6],
         [current_front_x, 0.6]
     ]
-    speaker_cone.set_xy(new_cone_verts)
+    speaker_cone = patches.Polygon(cone_verts, closed=True, color='#888888', alpha=0.9, zorder=6)
+    ax.add_patch(speaker_cone)
+
+    # Scatter Plot
+    # Initialize with 0.5 (neutral color) and set fixed vmin/vmax for consistent color mapping
+    scatter = ax.scatter(x_current, np.zeros_like(x_current), s=2000, c=color_values, cmap=cmap, vmin=0, vmax=1, edgecolors='white', alpha=0.9, zorder=10)
+
+    # Draw equilibrium lines (faint)
+    ax.vlines(x0, -0.2, 0.2, color='gray', alpha=0.2, linestyle=':', zorder=1)
 
     # 4. Render Frame
     # Use buffer_rgba for speed
     fig.canvas.draw()
     
-    # Get the RGBA buffer from the figure (using renderer for compatibility)
-    buf = fig.canvas.renderer.buffer_rgba()
+    # Get the RGBA buffer from the figure
+    try:
+        buf = fig.canvas.buffer_rgba()
+    except AttributeError:
+        # Fallback for older matplotlib or specific backends
+        buf = fig.canvas.renderer.buffer_rgba()
+        
     # Convert to numpy array
     X = np.asarray(buf)
     
     anim_placeholder.image(X, use_container_width=True)
     
-    if not run_animation:
-        break
+    plt.close(fig)
     
     t += dt
-    # Removed time.sleep to maximize FPS
-    # time.sleep(0.01)
+    time.sleep(0.01)
