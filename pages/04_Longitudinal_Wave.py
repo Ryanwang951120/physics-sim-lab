@@ -1,5 +1,7 @@
 import streamlit as st
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.patches as patches
@@ -72,10 +74,12 @@ dt = 0.05 * speed_factor
 cone_back_x = -3.3
 cone_front_x_base = -1.0
 
-while True:
-    if not run_animation:
-        break
+if run_animation:
+    st.caption("Animation is running...")
+else:
+    st.caption("Animation is paused.")
 
+while run_animation:
     # 1. Calculate Physics
     # x(t) = x0 + A * sin(kx) * cos(wt)
     # We scale amplitude by spacing to avoid particle crossing if possible, though crossing is physically possible for gas, not for spring coils.
@@ -109,22 +113,22 @@ while True:
     
     # 3. Create Figure and Plot
     # Lower DPI to improve FPS for large figure
-    fig, ax = plt.subplots(figsize=(24, 8), dpi=60)
+    fig, ax = plt.subplots(figsize=(12, 4), dpi=80)
     fig.patch.set_facecolor('#0E1117')
     ax.set_facecolor('#0E1117')
     fig.subplots_adjust(bottom=0.2)  # Add more space at the bottom for the large label
     ax.set_xlim(-5, L + 1)
     ax.set_ylim(-0.8, 0.8)
     ax.set_yticks([])  # Hide Y axis
-    ax.set_xlabel("Position (x)", fontsize=32)
-    ax.set_title(f"Longitudinal Standing Wave (Mode n={mode_n})", fontsize=36)
-    ax.tick_params(axis='x', labelsize=28, width=2, length=10)
+    ax.set_xlabel("Position (x)", fontsize=14)
+    ax.set_title(f"Longitudinal Standing Wave (Mode n={mode_n})", fontsize=16)
+    ax.tick_params(axis='x', labelsize=12, width=2, length=5)
 
     # Remove spines for cleaner look
     ax.spines['left'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
-    ax.spines['bottom'].set_linewidth(3)
+    ax.spines['bottom'].set_linewidth(2)
 
     # --- Speaker Graphics ---
     # Housing
@@ -147,28 +151,28 @@ while True:
 
     # Scatter Plot
     # Initialize with 0.5 (neutral color) and set fixed vmin/vmax for consistent color mapping
-    scatter = ax.scatter(x_current, np.zeros_like(x_current), s=2000, c=color_values, cmap=cmap, vmin=0, vmax=1, edgecolors='white', alpha=0.9, zorder=10)
+    scatter = ax.scatter(x_current, np.zeros_like(x_current), s=300, c=color_values, cmap=cmap, vmin=0, vmax=1, edgecolors='white', alpha=0.9, zorder=10)
 
     # Draw equilibrium lines (faint)
     ax.vlines(x0, -0.2, 0.2, color='gray', alpha=0.2, linestyle=':', zorder=1)
 
     # 4. Render Frame
-    # Use buffer_rgba for speed
-    fig.canvas.draw()
-    
-    # Get the RGBA buffer from the figure
     try:
-        buf = fig.canvas.buffer_rgba()
-    except AttributeError:
-        # Fallback for older matplotlib or specific backends
-        buf = fig.canvas.renderer.buffer_rgba()
+        # Use buffer_rgba for speed
+        fig.canvas.draw()
         
-    # Convert to numpy array
-    X = np.asarray(buf)
-    
-    anim_placeholder.image(X, use_container_width=True)
-    
-    plt.close(fig)
+        # Get the RGBA buffer from the figure
+        buf = fig.canvas.buffer_rgba()
+            
+        # Convert to numpy array
+        X = np.asarray(buf)
+        
+        anim_placeholder.image(X, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error rendering animation: {e}")
+        time.sleep(1) # Prevent rapid error looping
+    finally:
+        plt.close(fig)
     
     t += dt
     time.sleep(0.01)
